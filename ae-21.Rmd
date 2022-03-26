@@ -1,0 +1,390 @@
+---
+title: "AE 21: Multiple Regression, cont"
+author: "STA 199"
+date: "3/29/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+## Coming up
+
+- Peer Review Due Friday at 9 PM.
+- Exam 2 released on Friday morning, due next Tuesday at 11:59 PM.
+- There will not be lab on Monday next week or class on Tuesday.
+
+## Main ideas
+
+- Review and expand upon concepts from our first three regression classes.
+- Learn how to carry out and interpret multiple linear regressions.
+- Learn how to assess the conditions for inference in regression. 
+
+## Packages
+
+We'll use the `tidyverse`, `broom`, `fivethirtyeight`, and `viridis` packages again, as well as the `car` package when calculate variance inflation factors (VIFs) to examine whether our models have multicollinearity.
+
+```{r packages, include=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(viridis)
+library(car)
+library(fivethirtyeight)
+```
+
+## Please recall
+
+- Response Variable: Variable whose behavior or variation you are trying to understand, on the y-axis. Also called the dependent variable.
+
+- Explanatory Variable: Other variables that you want to use to explain the variation in the response, on the x-axis. Also called independent variables, predictors, or features.
+
+- Predicted value: Output of the model function
+  - The model function gives the typical value of the response variable   conditioning on the explanatory variables (what does this mean?)
+
+- Residuals: Shows how far each case is from its predicted value
+  - Residual = Observed value - Predicted value
+  - Tells how far above/below the model function each case is
+  
+## The linear model with a single predictor
+
+- We're interested in the $\beta_0$ (population parameter for the intercept)
+and the $\beta_1$ (population parameter for the slope) in the 
+following model:
+
+$$ \hat{y} = \beta_0 + \beta_1~x + \epsilon $$
+
+- Unfortunately, we can't get these values
+
+- So we use sample statistics to estimate them:
+
+$$ \hat{y} = b_0 + b_1~x $$
+
+## Least squares regression
+
+The regression line minimizes the sum of squared residuals.
+
+- **Residuals**: $e_i = y_i - \hat{y}_i$,
+
+- The regression line minimizes $\sum_{i = 1}^n e_i^2$.
+
+- Equivalently, minimizing $\sum_{i = 1}^n [y_i - (b_0 + b_1~x_i)]^2$
+
+## Data: A Closer Look
+
+```{r loaddata, message=FALSE}
+sports_car_prices <- read.csv("sportscars.csv")
+```
+
+The file `sportscars.csv` contains prices for Porsche and Jaguar cars for sale
+on cars.com.
+
+`car`: car make (Jaguar or Porsche)
+
+`price`: price in USD
+
+`age`: age of the car in years
+
+`mileage`: previous miles driven
+
+## The linear model with a single predictor
+
+```{r pricesmodel}
+prices_model <- linear_reg() %>%
+  set_engine("lm") %>%
+  fit(price ~ age, data = sports_car_prices)
+tidy(prices_model)
+```
+
+But is the age the only variable that predicts price?
+
+## The linear model with multiple predictors
+
+$$ \hat{y} = \beta_0 + \beta_1~x_1 + \beta_2~x_2 + \cdots + \beta_k~x_k +\epsilon $$
+
+- Sample model that we use to estimate the population model:
+  
+$$ \hat{y} = b_0 + b_1~x_1 + b_2~x_2 + \cdots + b_k~x_k $$
+
+Let's add a variable. 
+
+## Price vs. age and type of car
+
+Does the relationship between price and age depend on type of car?
+
+```{r plot1, echo=FALSE, warning=FALSE}
+ggplot(data = sports_car_prices, 
+       aes(x = age, y = price, color = car)) + 
+  scale_color_viridis(discrete = TRUE, option = "D", name = "Type of Car") + 
+  labs(x = "Age (years)", y = "Price (USD)", color = "Car Make") + 
+  geom_point() + 
+  geom_smooth(method="lm", se = FALSE) 
+```
+
+## Modeling with main effects 
+
+```{r maineffects}
+m_main <- linear_reg() %>%
+  set_engine("lm") %>%
+  fit(price ~ age + car, data = sports_car_prices)
+m_main %>%
+  tidy() %>%
+  select(term, estimate)
+```
+
+Linear model:
+
+$$ \widehat{price} = 44310 - 2487~age + 21648~carPorsche $$
+
+
+- Plug in 0 for `carPorsche` to get the linear model for Jaguars.
+- Plug in 1 for `carPorsche` to get the linear model for Porsches.
+
+- Jaguar: 
+
+$$ \widehat{price} = 44310 - 2487~age + 21648* 0 \\
+=44310-2487*age$$
+
+- Porsche: 
+$$ \widehat{price} = 44310 - 2487~age + 21648* 1 \\
+=65958 - 2487~age$$
+
+- Rate of change in price as the age of the car increases does not depend on 
+make of car (same slopes)
+- Porsches are consistently more expensive than Jaguars (different intercepts)
+
+## Interpretation of main effects
+
+```{r plot2, fig.height=4, echo = FALSE}
+
+ggplot(data = sports_car_prices, 
+       aes(x = age, y = price, color = car)) + 
+  scale_color_viridis(discrete = TRUE, option = "D", name = "Type of Car") +
+  geom_point()  +
+  geom_abline(intercept = 44310, slope = -2487, color = "#5B2C6F", lwd = 1) +
+  geom_abline(intercept = 65958, slope = -2487, color = "#F7DC6F", lwd = 1) +
+  labs(x = "Age (years)", y = "Price (USD)", color = "Car Make")
+```
+
+## Main effects, numerical and categorical predictors
+
+```{r maineffects2}
+m_main %>%
+  tidy() %>%
+  select(term, estimate)
+```
+
+```{r maincoefs}
+m_main_coefs <- m_main %>%
+  tidy() %>%
+  select(term, estimate)
+m_main_coefs
+```
+
+- **All else held constant**, for each additional year of a car's age, the price
+of the car is predicted to decrease, on average, by $2,487.
+
+- **All else held constant**, Porsches are predicted, on average, to have a 
+price that is $21,648 greater than Jaguars.
+
+- Jaguars that have an age of 0 are predicted, on average, to have a price of $44,310.
+
+## What went wrong?
+
+**Question**:
+Why is our linear regression model different from what we got from `geom_smooth(method = "lm")`?
+
+- `car` is the only variable in our model that affects the intercept.
+
+- The model we specified assumes Jaguars and Porsches have the **same slope** 
+and **different intercepts**.
+
+- What is the most appropriate model for these data?
+
+  - same slope and intercept for Jaguars and Porsches?
+  - same slope and different intercept for Jaguars and Porsches?
+  - different slope and different intercept for Jaguars and Porsches?
+  
+## Interacting explanatory variables
+
+- Including an interaction effect in the model allows for different slopes, i.e. 
+nonparallel lines.
+
+- This means that the relationship between an explanatory variable and the 
+response depends on another explanatory variable.
+
+- We can accomplish this by adding an **interaction variable**. This is the 
+product of two explanatory variables (also sometimes called an interaction term).
+
+## Modeling with interaction effects
+
+```{r interactingplot}
+ggplot(data = sports_car_prices, 
+       aes(x = age, y = price, color = car)) + 
+    scale_color_viridis(discrete = TRUE, option = "D", name = "Type of Car") + 
+  labs(x = "Age (years)", y = "Price (USD)", color = "Car Make") + 
+  geom_point() + 
+  geom_smooth(method="lm", se = FALSE) 
+``` 
+
+```{r interaction}
+ m_int <- linear_reg() %>%
+  set_engine("lm") %>%
+  fit(price ~ age + car + age * car, 
+            data = sports_car_prices) 
+m_int %>%
+  tidy() %>%
+  select(term, estimate)
+```
+
+$$\widehat{price} = 56988 - 5040~age + 6387~carPorsche + 2969~age \times carPorsche$$
+
+## Interpretation of interaction effects
+
+$$\widehat{price} = 56988 - 5040~age + 6387~carPorsche + 2969~age \times carPorsche$$
+
+- Plug in 0 for `carPorsche` to get the linear model for Jaguars.
+- Plug in 1 for `carPorsche` to get the linear model for Porsches.
+
+- Jaguar: 
+
+$$\begin{align}\widehat{price} &= 56988 - 5040~age + 6387~carPorsche + 2969~age \times carPorsche \\
+&= 56988 - 5040~age + 6387 \times 0 + 2969~age \times 0\\
+&= 56988 - 5040~age\end{align}$$
+
+- Porsche:
+
+
+$$\begin{align}\widehat{price} &= 56988 - 5040~age + 6387~carPorsche + 2969~age \times carPorsche \\
+&= 56988 - 5040~age + 6387 \times 1 + 2969~age \times 1\\
+&= 63375 - 2071~age\end{align}$$
+
+## Interpretation of interaction effects
+
+- Jaguar: 
+
+$$\widehat{price} = 56988 - 5040~age$$
+
+- Porsche: 
+
+$$\widehat{price} = 63375 - 2071~age$$
+
+- Rate of change in price as the age of the car increases depends on the make 
+of the car (different slopes).
+
+- Porsches are consistently more expensive than Jaguars (different intercepts).
+
+## Continuous by continuous interactions
+
+- Interpretation becomes trickier
+
+- Slopes conditional on values of explanatory variables
+
+## Third order interactions
+
+- Can you? Yes
+
+- Should you? Probably not if you want to interpret these interactions in 
+context of the data.
+
+## Multicollinearity
+
+You don't want the predictors to be too correlated with each other in a multiple regression model. When they are correlated with each other, you have **mutlicollinearity**. One way to diagnose multicollinearity is with **variance inflation factors.** There's no specific cutoff, but a VIF of 10 if sometimes used as a cutoff.
+
+Let's see if we have multicollinearity in our first model. (Please do not run linear regressions this way on the exam, I'm doing it this way to demonstrate with `car`.)
+
+```{r vif}
+m_main_2 <- lm(price ~ age + car, data = sports_car_prices)
+tibble(vif(m_main_2))
+```
+
+Now, let's check if for the interactive model.
+
+```{r vif2}
+m_int_2 <- lm(price ~ age + car + age * car, 
+            data = sports_car_prices)
+tibble(vif(m_int_2))
+```
+
+Notice the VIFs here are higher. This is to be expected with an interactive model. 
+
+**Question**: Why do you think VIFs will be higher in interactive models?
+
+Yes- this is because the interaction terms are made up of the other variables. So, they are likely to correlate with them. This is normal.
+
+## P-Hacking
+
+Let's return to the candy rankings data:
+
+Notice below that our p-value for the sugar percentile variable is **REALLY CLOSE** to 0.05. While arbitrary, this threshold is important in statistics and is sometimes used as the cutoff to determine whether results are publishable.
+
+```{r close}
+candy_rankings <- candy_rankings %>%
+  mutate(sugarpercent100 = sugarpercent * 100)
+candy <- linear_reg() %>%
+  set_engine("lm") %>%
+  fit(winpercent ~ sugarpercent100 + chocolate, data = candy_rankings) 
+tidy(candy)
+```
+
+
+[FiveThirtyEight](https://projects.fivethirtyeight.com/p-hacking) has a interactive page showing how you can p-hack your way to publication. 
+
+How could we p-hack our way to a significant result for the sugar variable? 
+
+Try adding the variable for whether the variable is a hard candy.
+
+```{r p_hack}
+
+```
+
+We now have statistically significant results for our main variable of interest! But there are some data ethics issues with this approach.
+
+**Question**: Why is p-hacking problematic?
+
+This can result in you getting statistically significant results when you may not actually have them, increasing the probability of a Type 1 Error, among other concerns.
+
+## Practice
+
+1. Run and interpret a multiple regression with both age and mileage as predictors. Are both of these statistically significant predictors of the price of a car?
+
+```{r agemileage}
+
+```
+
+Slopes:
+
+Intercept:
+
+2. (To Review) Find and interpret the adjusted $R^2$ for this model.
+
+```{r adjr2mileage}
+
+```
+
+
+3. Examine the extent to which there is multicollinearity in this model.
+
+```{r multi}
+
+```
+
+
+Now, please turn to the dataset in `nycairquality.csv`. This file contains daily air quality measurements in New York from May to September 1973 and collected by the New York State Department of Conservation and the National Weather Service (Chambers, J. M., Cleveland, W. S., Kleiner, B. and Tukey, P. A. (1983) *Graphical Methods for Data Analysis*. Belmont, CA: Wadsworth).
+
+- `Ozone`: ozone (ppb)
+- `Solar.R`: solar radiation (langleys)
+- `Wind`: wind (mph)
+- `Temp`: temperature (degrees F)
+
+```{r loaddata2, message=FALSE}
+airquality <- read.csv("airquality.csv")
+```
+
+4. Please run and interpret a model with ozone in parts per billion as the response variable and solar radiation, wind, and temperature as the explanatory variables.
+
+```{r ozonemodel}
+
+```
+
+Slopes:
+
+Intercept:
